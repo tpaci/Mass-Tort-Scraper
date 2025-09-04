@@ -7,24 +7,18 @@ import streamlit as st
 # ---------- PAGE SETTINGS ----------
 st.set_page_config(page_title="Mass Tort Radar", layout="centered")
 
-# ---------- HEADER ----------
-col1, col2, col3 = st.columns([1,3,1])
-
-with col2:
-    st.image(
-        "https://cdn-copja.nitrocdn.com/JqMfseSnYjDVxZAOIJWXvOlZnIGyBMST/assets/images/optimized/rev-abff178/lawrank.com/wp-content/uploads/2024/04/TSEG.png",  # ✅ TSEG logo URL
-        width=220
-    )
-    st.markdown(
-        "<h1 style='text-align: center; margin-top: -10px;'>🎯 Mass Tort Radar – Law Firm Scraper</h1>",
-        unsafe_allow_html=True
-    )
-    st.markdown(
-        "<p style='text-align: center; font-size: 1.1em;'>Upload a list of law firm URLs and (optionally) your own keyword list. I’ll extract firm info, detect mass tort terms, and return a clean CSV.</p>",
-        unsafe_allow_html=True
-    )
-
-st.markdown("---")
+# ---------- HEADER WITH LOGO + STYLING ----------
+st.markdown("""
+    <div style="background-color:#111; padding: 1.2rem 1rem; border-radius: 12px; margin-bottom: 2rem;">
+        <div style="text-align: center;">
+            <img src="https://cdn-copja.nitrocdn.com/JqMfseSnYjDVxZAOIJWXvOlZnIGyBMST/assets/images/optimized/rev-abff178/lawrank.com/wp-content/uploads/2024/04/TSEG.png" width="180">
+            <h1 style="margin-top: 0.5rem; color: white;">🎯 Mass Tort Radar – Law Firm Scraper</h1>
+            <p style="color: #ccc; font-size: 1.05rem; max-width: 700px; margin: 0 auto;">
+                Upload a CSV of law firm URLs and (optionally) a keyword list. I’ll extract firm info, check for mass tort terms, and return a clean, downloadable CSV.
+            </p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # ---------- FILE UPLOADERS ----------
 uploaded = st.file_uploader("📥 Step 1: Upload CSV of law firm URLs", type=["csv"])
