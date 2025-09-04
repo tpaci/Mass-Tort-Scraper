@@ -8,8 +8,22 @@ import streamlit as st
 st.set_page_config(page_title="Mass Tort Radar", layout="centered")
 
 # ---------- HEADER ----------
-st.markdown("<h1 style='text-align: center;'>🎯 Mass Tort Radar – Law Firm Scraper</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 1.1em;'>Upload a list of law firm URLs and (optionally) your own keyword list. I’ll extract firm info, detect mass tort terms, and return a clean CSV.</p>", unsafe_allow_html=True)
+col1, col2, col3 = st.columns([1,3,1])
+
+with col2:
+    st.image(
+        "https://tseg.com/wp-content/uploads/2021/09/tseg-logo.png",  # ✅ TSEG logo URL
+        width=220
+    )
+    st.markdown(
+        "<h1 style='text-align: center; margin-top: -10px;'>🎯 Mass Tort Radar – Law Firm Scraper</h1>",
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        "<p style='text-align: center; font-size: 1.1em;'>Upload a list of law firm URLs and (optionally) your own keyword list. I’ll extract firm info, detect mass tort terms, and return a clean CSV.</p>",
+        unsafe_allow_html=True
+    )
+
 st.markdown("---")
 
 # ---------- FILE UPLOADERS ----------
