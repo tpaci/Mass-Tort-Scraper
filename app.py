@@ -46,7 +46,6 @@ def extract_text(soup):
 def find_firm_name(soup):
     og = soup.find("meta", property="og:site_name")
     if og and og.get("content"): return og["content"].strip()
-    # try logo alt
     logo = soup.select_one("img[alt]")
     if logo and len(logo.get("alt","").strip()) > 2:
         return logo.get("alt").strip()[:140]
@@ -63,7 +62,6 @@ def find_phone(text, soup):
 
 def find_practice_areas(soup, text):
     areas = set()
-    # common sections
     for selector in ["nav", "footer"]:
         for c in soup.select(selector):
             for a in c.find_all("a"):
@@ -71,7 +69,6 @@ def find_practice_areas(soup, text):
                 if 2 <= len(label.split()) <= 5 and len(label) <= 40:
                     if any(k in label.lower() for k in ["injury","accident","divorce","family","criminal","dui","bankruptcy","mass","class","abuse","mesh","cpap","roundup","talc","earplug","paraquat","pfas"]):
                         areas.add(label)
-    # keyword fallback
     for kw in ["personal injury","car accident","divorce","family law","criminal defense","mass tort","class action","dui","truck accident","motorcycle accident"]:
         if kw in text.lower(): areas.add(kw.title())
     return sorted(areas)
@@ -94,16 +91,29 @@ def detect_agency(html):
     return "", ""
 
 def mass_tort_hits(text):
-    return sorted({t for t in MASS_TORT_TERMS if t and t.lower() in text.lower()})
+    found = set()
+    lower_text = text.lower()
+    for term in MASS_TORT_TERMS:
+        parts = term.lower().split()
+        if all(part in lower_text for part in parts):
+            found.add(term)
+    return sorted(found)
 
 def process_url(url):
-    row = {"url":url, "firm_name":"", "phone":"", "practice_areas":"", "mass_tort_detected":"N",
-           "mass_tort_terms":"", "locations":"", "agency_detected":"", "agency_evidence":"", "latest_mass_tort_update":"",
-           "page_title":""}
+    if not url.startswith("http"):
+        url = "https://" + url
+    row = {
+        "url": url,
+        "firm_name": "", "phone": "", "practice_areas": "",
+        "mass_tort_detected": "N", "mass_tort_terms": "",
+        "locations": "", "agency_detected": "", "agency_evidence": "",
+        "latest_mass_tort_update": "", "page_title": "", "debug_snippet": ""
+    }
     html = get_html(url)
     if not html: return row
     soup = BeautifulSoup(html, "html.parser")
     text = extract_text(soup)
+    row["debug_snippet"] = text[:500]
     row["page_title"] = (soup.title.string.strip() if soup.title and soup.title.string else "")
     row["firm_name"] = find_firm_name(soup)
     row["phone"] = find_phone(text, soup)
@@ -116,11 +126,10 @@ def process_url(url):
     if hits:
         row["mass_tort_detected"] = "Y"
         row["mass_tort_terms"] = " | ".join(hits)
-        # Leave latest_mass_tort_update blank here; you can add a separate step or GPT for news.
     return row
 
 st.title("Mass Tort Radar – Law Firm Scraper")
-st.caption("Upload a CSV with a 'url' column. I'll extract firm info, practice areas, locations, phone, vendor fingerprints, and flag mass-tort terms.")
+st.caption("Upload a CSV with a 'url' column. I’ll extract firm info, practice areas, locations, phone, vendor fingerprints, and flag mass-tort terms.")
 
 uploaded = st.file_uploader("Upload CSV of URLs", type=["csv"])
 run = st.button("Run Scrape", disabled=not uploaded)
@@ -139,17 +148,19 @@ if run and uploaded:
             try:
                 out_rows.append(process_url(u))
             except Exception as e:
-                out_rows.append({"url":u, "firm_name":"", "phone":"", "practice_areas":"", "mass_tort_detected":"N",
-                                 "mass_tort_terms":"", "locations":"", "agency_detected":"", "agency_evidence":"",
-                                 "latest_mass_tort_update":f"error: {e}", "page_title":""})
-            prog.progress(int(i/len(urls)*100))
+                out_rows.append({
+                    "url": u, "firm_name": "", "phone": "", "practice_areas": "", "mass_tort_detected": "N",
+                    "mass_tort_terms": "", "locations": "", "agency_detected": "", "agency_evidence": "",
+                    "latest_mass_tort_update": f"error: {e}", "page_title": "", "debug_snippet": ""
+                })
+            prog.progress(i / len(urls))
             time.sleep(0.5)
         status.empty(); prog.empty()
 
         df_out = pd.DataFrame(out_rows, columns=[
-            "url","firm_name","phone","practice_areas","mass_tort_detected",
-            "mass_tort_terms","locations","agency_detected","agency_evidence",
-            "latest_mass_tort_update","page_title"
+            "url", "firm_name", "phone", "practice_areas", "mass_tort_detected",
+            "mass_tort_terms", "locations", "agency_detected", "agency_evidence",
+            "latest_mass_tort_update", "page_title", "debug_snippet"
         ])
         st.subheader("Preview")
         st.dataframe(df_out, use_container_width=True)
