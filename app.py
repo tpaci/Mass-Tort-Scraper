@@ -1,13 +1,25 @@
-# app.py
-import re, time, io
+import re, time
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import streamlit as st
 
-st.set_page_config(page_title="Mass Tort Radar – Law Firm Scraper", layout="wide")
+# ---------- PAGE SETTINGS ----------
+st.set_page_config(page_title="Mass Tort Radar", layout="centered")
 
-# ------- DEFAULT MASS TORT KEYWORDS (fallback) -------
+# ---------- HEADER ----------
+st.markdown("<h1 style='text-align: center;'>🎯 Mass Tort Radar – Law Firm Scraper</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 1.1em;'>Upload a list of law firm URLs and (optionally) your own keyword list. I’ll extract firm info, detect mass tort terms, and return a clean CSV.</p>", unsafe_allow_html=True)
+st.markdown("---")
+
+# ---------- FILE UPLOADERS ----------
+uploaded = st.file_uploader("📥 Step 1: Upload CSV of law firm URLs", type=["csv"])
+keyword_file = st.file_uploader("🧠 Step 2 (Optional): Upload custom keyword list (.txt or .csv)", type=["txt", "csv"])
+
+# ---------- SCRAPE BUTTON ----------
+run = st.button("🚀 Run Scrape", disabled=not uploaded)
+
+# ---------- DEFAULT KEYWORDS ----------
 DEFAULT_MASS_TORT_TERMS = [t.strip() for t in """
 afff, firefighting foam, pfas, camp lejeune, 3m earplug, earplugs, paraquat, roundup, glyphosate, talc,
 talcum powder, baby powder, elmiron, hernia mesh, mesh implant, cpap, philips respironics, hair relaxer,
@@ -17,8 +29,25 @@ benzene sunscreen, silica, silicosis, social media harm, snapchat addiction, tik
 uber assault, clergy abuse, boy scouts abuse, sexual abuse, paraquat parkinson
 """.split(",")]
 
-# ------- SCRAPER SETTINGS -------
-HEADERS = {"User-Agent":"Mozilla/5.0"}
+keyword_list = DEFAULT_MASS_TORT_TERMS
+
+# ---------- LOAD CUSTOM KEYWORDS ----------
+if keyword_file:
+    try:
+        if keyword_file.name.endswith(".txt"):
+            lines = keyword_file.read().decode("utf-8").splitlines()
+        else:
+            df_keywords = pd.read_csv(keyword_file)
+            lines = df_keywords.iloc[:, 0].dropna().astype(str).tolist()
+        keyword_list = [line.strip() for line in lines if line.strip()]
+        st.success(f"✅ Loaded {len(keyword_list)} custom keywords.")
+        st.caption("Preview: " + ", ".join(keyword_list[:5]) + ("..." if len(keyword_list) > 5 else ""))
+    except Exception as e:
+        st.warning(f"⚠️ Failed to parse keyword file: {e}")
+        keyword_list = DEFAULT_MASS_TORT_TERMS
+
+# ---------- SCRAPE SETTINGS ----------
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 PHONE_RE = re.compile(r'(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}')
 ADDR_HINT = re.compile(r'\b(Suite|Ste\.|Floor|FL|Ave|Avenue|St\.|Street|Blvd|Boulevard|Rd\.|Road|TX|CA|NY|FL|IL|WA|CO|GA|OH|NV|AZ|NM|NC|SC|VA|PA|MA|NJ|LA|MI)\b', re.I)
 
@@ -33,7 +62,7 @@ AGENCY_PATTERNS = {
     "Nifty": [r"niftymarketing", r"nifty\."]
 }
 
-# ------- UTILS -------
+# ---------- CORE FUNCTIONS ----------
 def get_html(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=20)
@@ -84,112 +113,4 @@ def find_locations(soup, text):
         if ADDR_HINT.search(t): locs.add(t)
     for chunk in re.split(r'\s{2,}', text):
         if ADDR_HINT.search(chunk) and 10 < len(chunk) < 120:
-            locs.add(chunk.strip())
-    return list(locs)[:6]
-
-def detect_agency(html):
-    for name, pats in AGENCY_PATTERNS.items():
-        for p in pats:
-            if re.search(p, html, re.I):
-                return name, re.search(p, html, re.I).group(0)
-    return "", ""
-
-def mass_tort_hits(text, keyword_list):
-    found = set()
-    lower_text = text.lower()
-    for term in keyword_list:
-        parts = term.lower().split()
-        if all(part in lower_text for part in parts):
-            found.add(term)
-    return sorted(found)
-
-def process_url(url, keyword_list):
-    if not url.startswith("http"):
-        url = "https://" + url
-    row = {
-        "url": url,
-        "firm_name": "", "phone": "", "practice_areas": "",
-        "mass_tort_detected": "N", "mass_tort_terms": "",
-        "locations": "", "agency_detected": "", "agency_evidence": "",
-        "latest_mass_tort_update": "", "page_title": "", "debug_snippet": ""
-    }
-    html = get_html(url)
-    if not html: return row
-    soup = BeautifulSoup(html, "html.parser")
-    text = extract_text(soup)
-    row["debug_snippet"] = text[:500]
-    row["page_title"] = (soup.title.string.strip() if soup.title and soup.title.string else "")
-    row["firm_name"] = find_firm_name(soup)
-    row["phone"] = find_phone(text, soup)
-    areas = find_practice_areas(soup, text)
-    row["practice_areas"] = " | ".join(areas)
-    row["locations"] = " | ".join(find_locations(soup, text))
-    agency, evidence = detect_agency(html)
-    row["agency_detected"], row["agency_evidence"] = agency, evidence
-    hits = mass_tort_hits(text + " " + " ".join(areas), keyword_list)
-    if hits:
-        row["mass_tort_detected"] = "Y"
-        row["mass_tort_terms"] = " | ".join(hits)
-    return row
-
-# ------- STREAMLIT APP -------
-st.title("Mass Tort Radar – Law Firm Scraper")
-st.caption("Upload a CSV of law firm URLs and an optional keyword list. I’ll extract firm info, detect mass tort terms, and return a downloadable report.")
-
-uploaded = st.file_uploader("1️⃣ Upload CSV of URLs (must have a `url` column)", type=["csv"])
-keyword_file = st.file_uploader("2️⃣ Optional: Upload custom keyword list (.txt or .csv)", type=["txt", "csv"])
-run = st.button("Run Scrape", disabled=not uploaded)
-
-keyword_list = DEFAULT_MASS_TORT_TERMS
-
-# Handle keyword file
-if keyword_file:
-    try:
-        if keyword_file.name.endswith(".txt"):
-            lines = keyword_file.read().decode("utf-8").splitlines()
-        else:
-            df_keywords = pd.read_csv(keyword_file)
-            lines = df_keywords.iloc[:, 0].dropna().astype(str).tolist()
-        keyword_list = [line.strip() for line in lines if line.strip()]
-        st.success(f"✅ Loaded {len(keyword_list)} custom keywords.")
-        st.markdown("**Preview:** " + ", ".join(keyword_list[:5]) + ("..." if len(keyword_list) > 5 else ""))
-    except Exception as e:
-        st.warning(f"⚠️ Failed to parse keyword file: {e}")
-        keyword_list = DEFAULT_MASS_TORT_TERMS
-
-if run and uploaded:
-    df_in = pd.read_csv(uploaded)
-    if "url" not in df_in.columns:
-        st.error("Your CSV must contain a column named `url`.")
-    else:
-        urls = df_in["url"].dropna().astype(str).tolist()
-        out_rows = []
-        prog = st.progress(0)
-        status = st.empty()
-        for i, u in enumerate(urls, start=1):
-            status.markdown(f"Scraping **{u}** ({i}/{len(urls)})")
-            try:
-                out_rows.append(process_url(u, keyword_list))
-            except Exception as e:
-                out_rows.append({
-                    "url": u, "firm_name": "", "phone": "", "practice_areas": "", "mass_tort_detected": "N",
-                    "mass_tort_terms": "", "locations": "", "agency_detected": "", "agency_evidence": "",
-                    "latest_mass_tort_update": f"error: {e}", "page_title": "", "debug_snippet": ""
-                })
-            prog.progress(i / len(urls))
-            time.sleep(0.5)
-        status.empty(); prog.empty()
-
-        df_out = pd.DataFrame(out_rows, columns=[
-            "url", "firm_name", "phone", "practice_areas", "mass_tort_detected",
-            "mass_tort_terms", "locations", "agency_detected", "agency_evidence",
-            "latest_mass_tort_update", "page_title", "debug_snippet"
-        ])
-        st.subheader("Scrape Complete – Preview Below")
-        st.dataframe(df_out, use_container_width=True)
-
-        csv_bytes = df_out.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download CSV", data=csv_bytes, file_name="scrape_output.csv", mime="text/csv")
-
-st.markdown("---")
-st.caption("Tip: Use your Custom GPT with Browsing enabled to expand mass tort updates column.")
+            locs.add(chunk.st
