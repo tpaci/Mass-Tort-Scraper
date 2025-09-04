@@ -113,4 +113,5 @@ def find_locations(soup, text):
         if ADDR_HINT.search(t): locs.add(t)
     for chunk in re.split(r'\s{2,}', text):
         if ADDR_HINT.search(chunk) and 10 < len(chunk) < 120:
-            locs.add(chunk.st
+            locs.add(chunk.strip())
+
