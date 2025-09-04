@@ -12,7 +12,7 @@ col1, col2, col3 = st.columns([1,3,1])
 
 with col2:
     st.image(
-        "https://tseg.com/wp-content/uploads/2021/09/tseg-logo.png",  # ✅ TSEG logo URL
+        "https://cdn-copja.nitrocdn.com/JqMfseSnYjDVxZAOIJWXvOlZnIGyBMST/assets/images/optimized/rev-abff178/lawrank.com/wp-content/uploads/2024/04/TSEG.png",  # ✅ TSEG logo URL
         width=220
     )
     st.markdown(
