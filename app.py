@@ -52,7 +52,7 @@ if keyword_file:
         st.warning(f"⚠️ Failed to parse keyword file: {e}")
         keyword_list = DEFAULT_MASS_TORT_TERMS
 
-# ---------- SCRAPE HELPERS ----------
+# ---------- REGEX AND HEADERS ----------
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 PHONE_RE = re.compile(r'(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}')
 ADDR_HINT = re.compile(r'\b(Suite|Ste\.|Floor|FL|Ave|Avenue|St\.|Street|Blvd|Boulevard|Rd\.|Road|TX|CA|NY|FL|IL|WA|CO|GA|OH|NV|AZ|NM|NC|SC|VA|PA|MA|NJ|LA|MI)\b', re.I)
@@ -68,12 +68,14 @@ AGENCY_PATTERNS = {
     "Nifty": [r"niftymarketing", r"nifty\."]
 }
 
+# ---------- UTIL FUNCTIONS ----------
 def get_html(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=20)
         if r.status_code == 200 and "text/html" in r.headers.get("Content-Type", ""):
             return r.text
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch {url}: {e}")
         return None
     return None
 
@@ -119,47 +121,45 @@ def find_locations(soup, text):
     for chunk in re.split(r'\s{2,}', text):
         if ADDR_HINT.search(chunk) and 10 < len(chunk) < 120:
             locs.add(chunk.strip())
-    return sorted(locs)
+    return list(locs)
 
 def find_agency(html):
     for agency, patterns in AGENCY_PATTERNS.items():
         for pat in patterns:
-            if re.search(pat, html or "", re.IGNORECASE): return agency
+            if re.search(pat, html, re.I): return agency
     return ""
 
-# ---------- MAIN SCRAPER LOGIC ----------
+# ---------- MAIN SCRAPE ----------
 if run:
     try:
         df = pd.read_csv(uploaded)
         urls = df.iloc[:, 0].dropna().tolist()
         results = []
 
-        for url in urls:
-            html = get_html(url)
-            if not html:
+        with st.spinner(f"Scraping {len(urls)} sites..."):
+            for url in urls:
+                html = get_html(url)
+                if not html:
+                    results.append({"URL": url, "Status": "Failed to load"})
+                    continue
+                soup = BeautifulSoup(html, "html.parser")
+                text = extract_text(soup)
                 results.append({
-                    "URL": url, "Status": "Failed to load"
+                    "URL": url,
+                    "Firm Name": find_firm_name(soup),
+                    "Phone": find_phone(text, soup),
+                    "Practice Areas": ", ".join(find_practice_areas(soup, text)),
+                    "Mass Tort Terms": ", ".join([kw for kw in keyword_list if kw.lower() in text.lower()]),
+                    "Mass Tort Detected": "Y" if any(kw.lower() in text.lower() for kw in keyword_list) else "N",
+                    "Locations": ", ".join(find_locations(soup, text)),
+                    "Agency": find_agency(html)
                 })
-                continue
-
-            soup = BeautifulSoup(html, "html.parser")
-            text = extract_text(soup)
-
-            results.append({
-                "URL": url,
-                "Firm Name": find_firm_name(soup),
-                "Phone": find_phone(text, soup),
-                "Practice Areas": ", ".join(find_practice_areas(soup, text)),
-                "Mass Tort Terms": ", ".join([kw for kw in keyword_list if kw.lower() in text.lower()]),
-                "Mass Tort Detected": "Y" if any(kw.lower() in text.lower() for kw in keyword_list) else "N",
-                "Locations": ", ".join(find_locations(soup, text)),
-                "Agency": find_agency(html)
-            })
 
         st.success(f"✅ Scraped {len(results)} sites.")
+
         df_out = pd.DataFrame(results)
         st.dataframe(df_out)
-        st.download_button("📥 Download CSV", df_out.to_csv(index=False), file_name="scrape_results.csv", mime="text/csv")
+        st.download_button("📄 Download CSV", df_out.to_csv(index=False), file_name="scrape_results.csv", mime="text/csv")
 
     except Exception as e:
-        st.error(f"❌ Error: {e}")
+        st.error(f"❌ Error during scraping: {e}")
