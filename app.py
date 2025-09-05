@@ -29,7 +29,7 @@ run = st.button("🚀 Run Scrape", disabled=not uploaded)
 
 # ---------- DEFAULT KEYWORDS ----------
 DEFAULT_MASS_TORT_TERMS = [t.strip() for t in """
-afff, firefighting foam, pfas, camp lejeune, 3m earplug, earplugs, paraquat, roundup, glyphosate, talc,
+afff, firefighting foam, pfas, camp lejeune, gambling addiction, gambling, 3m earplug, earplugs, paraquat, roundup, glyphosate, talc,
 talcum powder, baby powder, elmiron, hernia mesh, mesh implant, cpap, philips respironics, hair relaxer,
 ozempic, wegovy, mounjaro, glp-1, suboxone tooth decay, zantac, valsartan, exactech, juul, vaping,
 nec infant formula, nec, tylenol pregnancy, apap, acetaminophen autism, insulin pump recall, hip implant,
