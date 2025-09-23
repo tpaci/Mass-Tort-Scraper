@@ -29,8 +29,7 @@ run = st.button("🚀 Run Scrape", disabled=not uploaded)
 DEFAULT_MASS_TORT_TERMS = [t.strip() for t in """
 afff, firefighting foam, pfas, camp lejeune, gambling addiction, gambling, 3m earplug, earplugs, paraquat, roundup, glyphosate, talc,
 talcum powder, baby powder, elmiron, hernia mesh, mesh implant, cpap, philips respironics, hair relaxer,
-ozempic, wegovy, mounjaro, glp-1, suboxone tooth decay, zantac, valsartan, exactech, juul, vaping,
-nec infant formula, Tylenol, tylenol pregnancy, apap, acetaminophen autism, insulin pump recall, hip implant,
+ozempic, wegovy, mounjaro, glp-1, suboxone tooth decay, zantac, valsartan, exactech, juul, vaping, infant formula, Tylenol, tylenol pregnancy, apap, acetaminophen autism, insulin pump recall, hip implant,
 benzene sunscreen, silica, silicosis, social media harm, snapchat addiction, tiktok addiction, meta addiction,
 uber assault, clergy abuse, boy scouts abuse, sexual abuse, paraquat parkinson, dupixent
 """.split(",")]
