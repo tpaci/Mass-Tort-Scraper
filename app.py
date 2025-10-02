@@ -4,10 +4,10 @@ import requests
 from bs4 import BeautifulSoup
 import streamlit as st
 
-# ---------- PAGE SETTINGS ----------
+# ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="Mass Tort Radar", layout="centered")
 
-# ---------- HEADER WITH LOGO + STYLING ----------
+# ---------- TSEG HEADER ----------
 st.markdown("""
     <div style="background-color:#111; padding: 1.2rem 1rem; border-radius: 12px; margin-bottom: 2rem;">
         <div style="text-align: center;">
@@ -20,7 +20,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# ---------- FILE UPLOADERS ----------
+# ---------- FILE UPLOAD ----------
 uploaded = st.file_uploader("📥 Step 1: Upload CSV of law firm URLs", type=["csv"])
 keyword_file = st.file_uploader("🧠 Step 2 (Optional): Upload custom keyword list (.txt or .csv)", type=["txt", "csv"])
 run = st.button("🚀 Run Scrape", disabled=not uploaded)
@@ -29,14 +29,13 @@ run = st.button("🚀 Run Scrape", disabled=not uploaded)
 DEFAULT_MASS_TORT_TERMS = [t.strip() for t in """
 afff, firefighting foam, pfas, camp lejeune, gambling addiction, gambling, 3m earplug, earplugs, paraquat, roundup, glyphosate, talc,
 talcum powder, baby powder, elmiron, hernia mesh, mesh implant, cpap, philips respironics, hair relaxer,
-ozempic, wegovy, mounjaro, glp-1, suboxone tooth decay, zantac, valsartan, exactech, juul, vaping, infant formula, Tylenol, tylenol pregnancy, apap, acetaminophen autism, insulin pump recall, hip implant,
+ozempic, wegovy, mounjaro, glp-1, suboxone tooth decay, zantac, valsartan, exactech, juul, vaping, roblox, tylenol pregnancy, apap, acetaminophen autism, insulin pump recall, hip implant,
 benzene sunscreen, silica, silicosis, social media harm, snapchat addiction, tiktok addiction, meta addiction,
-uber assault, clergy abuse, boy scouts abuse, sexual abuse, paraquat parkinson, dupixent
+uber assault, clergy abuse, boy scouts abuse, sexual abuse, paraquat parkinson
 """.split(",")]
 
 keyword_list = DEFAULT_MASS_TORT_TERMS
 
-# ---------- LOAD CUSTOM KEYWORDS ----------
 if keyword_file:
     try:
         if keyword_file.name.endswith(".txt"):
@@ -51,7 +50,7 @@ if keyword_file:
         st.warning(f"⚠️ Failed to parse keyword file: {e}")
         keyword_list = DEFAULT_MASS_TORT_TERMS
 
-# ---------- REGEX AND HEADERS ----------
+# ---------- REGEX & AGENCY TAGS ----------
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 PHONE_RE = re.compile(r'(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}')
 ADDR_HINT = re.compile(r'\b(Suite|Ste\.|Floor|FL|Ave|Avenue|St\.|Street|Blvd|Boulevard|Rd\.|Road|TX|CA|NY|FL|IL|WA|CO|GA|OH|NV|AZ|NM|NC|SC|VA|PA|MA|NJ|LA|MI)\b', re.I)
@@ -67,14 +66,13 @@ AGENCY_PATTERNS = {
     "Nifty": [r"niftymarketing", r"nifty\."]
 }
 
-# ---------- UTIL FUNCTIONS ----------
+# ---------- HELPERS ----------
 def get_html(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=20)
         if r.status_code == 200 and "text/html" in r.headers.get("Content-Type", ""):
             return r.text
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch {url}: {e}")
+    except Exception:
         return None
     return None
 
@@ -99,19 +97,6 @@ def find_phone(text, soup):
     m = PHONE_RE.search(text)
     return m.group(0) if m else ""
 
-def find_practice_areas(soup, text):
-    areas = set()
-    for selector in ["nav", "footer"]:
-        for c in soup.select(selector):
-            for a in c.find_all("a"):
-                label = (a.get_text() or "").strip()
-                if 2 <= len(label.split()) <= 5 and len(label) <= 40:
-                    if any(k in label.lower() for k in ["injury", "accident", "divorce", "family", "criminal", "dui", "bankruptcy", "mass", "class", "abuse", "mesh", "cpap", "roundup", "talc", "earplug", "paraquat", "pfas"]):
-                        areas.add(label)
-    for kw in ["personal injury", "car accident", "divorce", "family law", "criminal defense", "mass tort", "class action", "dui", "truck accident", "motorcycle accident"]:
-        if kw in text.lower(): areas.add(kw.title())
-    return sorted(areas)
-
 def find_locations(soup, text):
     locs = set()
     for addr in soup.find_all(["address"]):
@@ -122,24 +107,33 @@ def find_locations(soup, text):
             locs.add(chunk.strip())
     return list(locs)
 
-def find_agency(html):
+def detect_agency(html):
     for agency, patterns in AGENCY_PATTERNS.items():
-        for pat in patterns:
-            if re.search(pat, html, re.I): return agency
+        if any(re.search(pat, html, re.I) for pat in patterns):
+            return agency
     return ""
 
-# ---------- MAIN SCRAPE ----------
-if run:
-    try:
-        df = pd.read_csv(uploaded)
-        urls = df.iloc[:, 0].dropna().tolist()
-        results = []
+def detect_mass_tort(text, keywords):
+    found = [kw for kw in keywords if kw.lower() in text.lower()]
+    return ", ".join(sorted(set(found))) if found else ""
 
-        with st.spinner(f"Scraping {len(urls)} sites..."):
-            for url in urls:
+# ---------- MAIN SCRAPER ----------
+if run:
+    df = pd.read_csv(uploaded)
+    urls = df.iloc[:, 0].dropna().astype(str).tolist()
+    batch_size = 50
+    results = []
+
+    progress = st.progress(0)
+    status = st.empty()
+
+    for i in range(0, len(urls), batch_size):
+        batch = urls[i:i+batch_size]
+        for idx, url in enumerate(batch):
+            try:
                 html = get_html(url)
                 if not html:
-                    results.append({"URL": url, "Status": "Failed to load"})
+                    results.append({"URL": url, "Firm Name": "", "Phone": "", "Locations": "", "Practice Areas": "", "Agency": "", "Mass Tort Terms": ""})
                     continue
                 soup = BeautifulSoup(html, "html.parser")
                 text = extract_text(soup)
@@ -147,18 +141,18 @@ if run:
                     "URL": url,
                     "Firm Name": find_firm_name(soup),
                     "Phone": find_phone(text, soup),
-                    "Practice Areas": ", ".join(find_practice_areas(soup, text)),
-                    "Mass Tort Terms": ", ".join([kw for kw in keyword_list if kw.lower() in text.lower()]),
-                    "Mass Tort Detected": "Y" if any(kw.lower() in text.lower() for kw in keyword_list) else "N",
-                    "Locations": ", ".join(find_locations(soup, text)),
-                    "Agency": find_agency(html)
+                    "Locations": "; ".join(find_locations(soup, text)),
+                    "Practice Areas": "; ".join(find_locations(soup, text)),
+                    "Agency": detect_agency(html),
+                    "Mass Tort Terms": detect_mass_tort(text, keyword_list)
                 })
+            except Exception:
+                results.append({"URL": url, "Firm Name": "", "Phone": "", "Locations": "", "Practice Areas": "", "Agency": "", "Mass Tort Terms": ""})
 
-        st.success(f"✅ Scraped {len(results)} sites.")
+        progress.progress(min((i + batch_size) / len(urls), 1.0))
+        status.text(f"✅ Scanned {min(i+batch_size, len(urls))} of {len(urls)} URLs...")
 
-        df_out = pd.DataFrame(results)
-        st.dataframe(df_out)
-        st.download_button("📄 Download CSV", df_out.to_csv(index=False), file_name="scrape_results.csv", mime="text/csv")
-
-    except Exception as e:
-        st.error(f"❌ Error during scraping: {e}")
+    st.success("🎉 Done scanning!")
+    out_df = pd.DataFrame(results)
+    st.dataframe(out_df)
+    st.download_button("📥 Download Results", out_df.to_csv(index=False).encode("utf-8"), file_name="mass_tort_radar_results.csv", mime="text/csv")
