@@ -23,7 +23,7 @@ st.markdown("""
             <img src="https://cdn-copja.nitrocdn.com/JqMfseSnYjDVxZAOIJWXvOlZnIGyBMST/assets/images/optimized/rev-abff178/lawrank.com/wp-content/uploads/2024/04/TSEG.png" width="180">
             <h1 style="margin-top: 0.5rem; color: white;">🎯 Mass Tort Radar – Law Firm Scraper</h1>
             <p style="color: #ccc; font-size: 1.05rem; max-width: 700px; margin: 0 auto;">
-                Upload a CSV of law firm URLs and (optionally) a keyword list. This version supports batching, partial saves, and resume mode.
+                Upload a CSV of law firm URLs and (optionally) a keyword list. This version supports batching, partial saves, resume mode, and per-batch downloads.
             </p>
         </div>
     </div>
@@ -57,7 +57,7 @@ AGENCY_PATTERNS = {
 }
 
 DEFAULT_MASS_TORT_TERMS = [t.strip() for t in """
-afff, firefighting foam, pfas, camp lejeune, gambling addiction, gambling, 3m earplug, earplugs, paraquat, roundup, glyphosate, Olympus, talc,
+afff, firefighting foam, pfas, camp lejeune, gambling addiction, gambling, 3m earplug, earplugs, paraquat, roundup, glyphosate, talc,
 talcum powder, baby powder, elmiron, hernia mesh, mesh implant, cpap, philips respironics, hair relaxer,
 ozempic, wegovy, mounjaro, glp-1, suboxone tooth decay, zantac, valsartan, exactech, juul, vaping,
 nec infant formula, nec, tylenol pregnancy, apap, acetaminophen autism, insulin pump recall, hip implant,
@@ -99,7 +99,6 @@ def load_uploaded_csv(uploaded_file) -> pd.DataFrame:
         actual_col = next(c for c in df.columns if c.lower() == "url")
         df = df.rename(columns={actual_col: "url"})
     else:
-        # fall back to first column
         first_col = df.columns[0]
         df = df.rename(columns={first_col: "url"})
 
@@ -273,7 +272,6 @@ def append_results(batch_df: pd.DataFrame, master_csv_path: str, log_csv_path: s
     header_needed_log = not os.path.exists(log_csv_path)
 
     batch_df.to_csv(master_csv_path, mode="a", header=header_needed_master, index=False)
-
     batch_df[["URL"]].to_csv(log_csv_path, mode="a", header=header_needed_log, index=False)
 
 def write_run_info(meta_txt_path: str, text: str):
@@ -309,7 +307,7 @@ resume_mode = st.checkbox("Resume mode (skip URLs already processed for this run
 run = st.button("🚀 Run Scrape", disabled=not uploaded)
 
 # -----------------------------
-# MAIN
+# PREVIEW
 # -----------------------------
 if uploaded:
     try:
@@ -320,9 +318,11 @@ if uploaded:
     except Exception as e:
         st.error(f"Could not read uploaded CSV: {e}")
 
+# -----------------------------
+# MAIN
+# -----------------------------
 if run:
     try:
-        # reload file cleanly during run
         uploaded.seek(0)
         input_df = load_uploaded_csv(uploaded)
         keywords = load_keywords(keyword_file)
@@ -381,6 +381,9 @@ if run:
 
         processed_this_session = 0
 
+        # Container for download buttons after each batch
+        download_section = st.container()
+
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
             end_idx = start_idx + batch_size
@@ -408,7 +411,6 @@ if run:
             processed_this_session += len(batch_urls)
             overall_progress.progress(processed_this_session / len(urls_to_process))
 
-            # show recent batch results
             live_table.dataframe(batch_df, use_container_width=True)
 
             success_count = (batch_df["Status"] == "Success").sum()
@@ -419,6 +421,20 @@ if run:
                 f"{success_count} success, {fail_count} failed. "
                 f"Progress saved."
             )
+
+            # -----------------------------
+            # QUICK FIX: DOWNLOAD AFTER EACH BATCH
+            # -----------------------------
+            if os.path.exists(paths["master_csv"]):
+                temp_df = pd.read_csv(paths["master_csv"])
+                with download_section:
+                    st.download_button(
+                        f"⬇️ Download Progress (after batch {batch_num + 1})",
+                        data=temp_df.to_csv(index=False).encode("utf-8"),
+                        file_name=f"{run_name}_progress_batch_{batch_num + 1}.csv",
+                        mime="text/csv",
+                        key=f"download_progress_{batch_num}"
+                    )
 
         st.success("🎉 Scrape complete. Results have been saved.")
 
@@ -433,7 +449,7 @@ if run:
             mime="text/csv"
         )
 
-        st.caption(f"Saved files are in: {paths['dir']}")
+        st.caption(f"Saved files are temporarily stored in: {paths['dir']}")
 
     except Exception as e:
         st.error(f"Something broke during the scrape: {e}")
