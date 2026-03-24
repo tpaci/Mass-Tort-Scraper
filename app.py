@@ -323,7 +323,10 @@ if uploaded:
 # -----------------------------
 if run:
     try:
-        uploaded.seek(0)
+        if uploaded is None:
+            st.error("Please upload a CSV before running the scraper.")
+            st.stop()
+
         input_df = load_uploaded_csv(uploaded)
         keywords = load_keywords(keyword_file)
 
@@ -378,11 +381,9 @@ if run:
         batch_status = st.empty()
         live_status = st.empty()
         live_table = st.empty()
+        download_section = st.container()
 
         processed_this_session = 0
-
-        # Container for download buttons after each batch
-        download_section = st.container()
 
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
@@ -422,9 +423,6 @@ if run:
                 f"Progress saved."
             )
 
-            # -----------------------------
-            # QUICK FIX: DOWNLOAD AFTER EACH BATCH
-            # -----------------------------
             if os.path.exists(paths["master_csv"]):
                 temp_df = pd.read_csv(paths["master_csv"])
                 with download_section:
